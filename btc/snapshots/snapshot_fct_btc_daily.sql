@@ -2,7 +2,7 @@
 
 {{
     config(
-        target_schema='analytics',
+        target_schema='snapshot',
         unique_key='btc_date',
         strategy='timestamp',
         updated_at='record_updated_at',
