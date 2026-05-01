@@ -1,0 +1,41 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw BTC datasets loaded into Snowflake by upstream ETL pipelines."
+    database: USER_DB_GRIZZLY
+    schema: raw
+    tables:
+      - name: BTC_DAILY
+        description: "Daily BTC OHLCV history loaded from Yahoo Finance."
+        config:
+          loaded_at_field: "yfinance_fetched_at"
+          freshness:
+            warn_after: {count: 36, period: hour}
+            error_after: {count: 72, period: hour}
+        columns:
+          - name: date
+            data_tests:
+              - not_null
+              - unique
+          - name: yfinance_fetched_at
+            data_tests:
+              - not_null
+
+      - name: BTC_FEAR_GREED
+        description: "Daily BTC fear and greed index loaded from Alternative.me."
+        config:
+          loaded_at_field: "fetched_at"
+          freshness:
+            warn_after: {count: 36, period: hour}
+            error_after: {count: 72, period: hour}
+        columns:
+          - name: date
+            data_tests:
+              - not_null
+              - unique
+          - name: fng_label
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']

@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: btc_daily_clean
+    description: "Cleaned daily BTC OHLCV data."
+    columns:
+      - name: btc_date
+        data_tests:
+          - not_null
+          - unique
+      - name: close_price_usd
+        data_tests:
+          - not_null
+
+  - name: btc_fear_greed_clean
+    description: "Cleaned BTC fear and greed data."
+    columns:
+      - name: btc_date
+        data_tests:
+          - not_null
+          - unique
+      - name: fear_greed_label
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']
+
+  - name: fct_btc_daily
+    description: "Daily BTC analytics table combining price history and fear-greed sentiment."
+    columns:
+      - name: btc_date
+        data_tests:
+          - not_null
+          - unique
+      - name: record_updated_at
+        data_tests:
+          - not_null
+      - name: fear_greed_label
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']
