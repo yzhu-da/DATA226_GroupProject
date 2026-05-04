@@ -2,34 +2,39 @@
 
 ## Overview
 
-This dbt project builds a historical Bitcoin analytics table from two raw Snowflake source tables:
+This dbt project builds Bitcoin analytics models in Snowflake from three raw source tables:
 
 - `BTC_DAILY`
 - `BTC_FEAR_GREED`
+- `BTC_REALTIME`
 
-The final output is a daily analytics table that combines:
+The project now covers three analytical layers:
 
-- daily BTC OHLCV price history
-- daily Fear & Greed sentiment
-- simple derived metrics such as daily return and intraday range
+- historical daily price analytics
+- realtime / intraday market analytics
+- forecast-vs-realtime validation
 
-The project also includes a dbt snapshot that preserves historical versions of the final analytics table.
+The project also includes dbt snapshots that preserve historical versions of key analytics models over time.
 
-This project intentionally focuses on the historical daily layer only.  
-Realtime models were removed from the final version because their grain and coverage did not align with the historical daily dataset.
+## Main Outputs
 
-## Final Output
-
-The main analytics model is:
-
-- `fct_btc_daily`
-
-This table contains one row per day and is intended to be the final table for analysis, reporting, and screenshots.
-
-Expected schemas:
+The primary dbt outputs are:
 
 - `analytics.fct_btc_daily`
+- `analytics.fct_btc_intraday_market`
+- `analytics.btc_forecast_vs_realtime`
 - `snapshot.snapshot_fct_btc_daily`
+- `snapshot.snapshot_fct_btc_intraday_market`
+- `snapshot.snapshot_btc_forecast_vs_realtime`
+
+In business terms:
+
+- `fct_btc_daily` is the core historical daily BTC table
+- `fct_btc_intraday_market` is the intraday / realtime market feature table
+- `btc_forecast_vs_realtime` compares a simple short-term forecast with observed realtime prices
+- `snapshot_fct_btc_daily` tracks changes to the final historical daily table over time
+- `snapshot_fct_btc_intraday_market` tracks changes to the intraday market analytics table over time
+- `snapshot_btc_forecast_vs_realtime` tracks changes to the forecast-vs-realtime comparison table over time
 
 ## Project Structure
 
@@ -43,9 +48,13 @@ btc/
 │   │   ├── btc_daily_clean.sql
 │   │   └── btc_fear_greed_clean.sql
 │   └── analytics/
-│       └── fct_btc_daily.sql
+│       ├── fct_btc_daily.sql
+│       ├── fct_btc_intraday_market.sql
+│       └── btc_forecast_vs_realtime.sql
 ├── snapshots/
-│   └── snapshot_fct_btc_daily.sql
+│   ├── snapshot_fct_btc_daily.sql
+│   ├── snapshot_fct_btc_intraday_market.sql
+│   └── snapshot_btc_forecast_vs_realtime.sql
 ├── tests/
 │   ├── assert_btc_daily_price_consistency.sql
 │   └── assert_btc_fear_greed_value_range.sql
@@ -93,6 +102,7 @@ In this project, `source.yml` defines:
 
 - `raw.BTC_DAILY`
 - `raw.BTC_FEAR_GREED`
+- `raw.BTC_REALTIME`
 
 It also includes source tests such as:
 
@@ -118,6 +128,8 @@ In this project, it covers:
 - `btc_daily_clean`
 - `btc_fear_greed_clean`
 - `fct_btc_daily`
+- `fct_btc_intraday_market`
+- `btc_forecast_vs_realtime`
 
 ### Transform Models
 
@@ -156,11 +168,11 @@ Important output columns include:
 - `fear_greed_value`
 - `fear_greed_label`
 
-### Analytics Model
+### Analytics Models
 
 #### `models/analytics/fct_btc_daily.sql`
 
-This is the final analytics model.
+This is the main historical daily analytics model.
 
 It joins:
 
@@ -168,8 +180,6 @@ It joins:
 - `btc_fear_greed_clean`
 
 on the daily date key.
-
-This model creates the final historical BTC daily table used for analysis.
 
 Important output columns include:
 
@@ -192,11 +202,72 @@ The `record_updated_at` column was added to support dbt snapshots.
 
 It represents the latest known update time for each final analytics row and allows dbt to detect when the row has changed.
 
+#### `models/analytics/fct_btc_intraday_market.sql`
+
+This model builds an intraday / realtime BTC analytics table from `BTC_REALTIME`.
+
+Its purpose is to:
+
+- preserve one row per realtime snapshot
+- expose intraday market activity metrics
+- create derived signals that can be used for realtime monitoring and downstream comparison
+
+Important output columns include:
+
+- `fetched_at`
+- `snapshot_date`
+- `snapshot_hour`
+- `open`
+- `high`
+- `low`
+- `close`
+- `volume_btc`
+- `volume_usdt`
+- `trades`
+- `taker_buy_ratio`
+- `price_spread_usd`
+- `snapshot_return_pct`
+- `volatility_pct`
+- `avg_trade_size_usdt`
+- `snapshot_direction`
+- `buy_pressure_level`
+
+#### `models/analytics/btc_forecast_vs_realtime.sql`
+
+This model compares a simple short-term BTC forecast against actual observed realtime market data.
+
+Its purpose is to:
+
+- use the latest historical daily table as a forecast base
+- compute a trailing 7-day average return
+- predict BTC close prices for the next 1, 2, and 3 days
+- compare forecasted values and forecast direction to realtime observations
+
+Important output columns include:
+
+- `prediction_date`
+- `day_ahead`
+- `base_date`
+- `base_close`
+- `predicted_close`
+- `actual_realtime_close`
+- `error_usd`
+- `error_pct`
+- `predicted_direction`
+- `actual_direction`
+- `direction_match`
+- `avg_return_7d_pct`
+- `realtime_volatility_pct`
+- `buy_pressure_level`
+- `taker_buy_ratio`
+- `model_name`
+- `model_created_at`
+
 ### Snapshot Definition
 
 #### `snapshots/snapshot_fct_btc_daily.sql`
 
-This file defines a dbt snapshot on top of the final analytics model.
+This file defines a dbt snapshot on top of the final daily analytics model.
 
 Its purpose is to:
 
@@ -219,6 +290,38 @@ After running `dbt snapshot`, dbt creates a snapshot table containing the analyt
 - `dbt_valid_to`
 
 The snapshot output should be created in the `snapshot` schema, not in `analytics`.
+
+#### `snapshots/snapshot_fct_btc_intraday_market.sql`
+
+This file defines a dbt snapshot for the intraday / realtime analytics table.
+
+Its purpose is to:
+
+- preserve historical versions of `fct_btc_intraday_market`
+- track changes in intraday market metrics over time
+- retain versioned records in the `snapshot` schema
+
+This snapshot uses:
+
+- `fetched_at` as the unique key
+- `record_updated_at` as the update timestamp
+- `timestamp` strategy for change detection
+
+#### `snapshots/snapshot_btc_forecast_vs_realtime.sql`
+
+This file defines a dbt snapshot for the forecast comparison model.
+
+Its purpose is to:
+
+- preserve historical versions of `btc_forecast_vs_realtime`
+- track how forecast comparison rows change as realtime observations become available
+- retain versioned records in the `snapshot` schema
+
+This snapshot uses:
+
+- `prediction_date` as the unique key
+- `record_updated_at` as the update timestamp
+- `timestamp` strategy for change detection
 
 ### Singular Data Tests
 
@@ -250,8 +353,8 @@ This folder stores dbt snapshot definitions.
 In this project, it contains:
 
 - `snapshot_fct_btc_daily.sql`
-
-The snapshot captures historical versions of the final analytics table.
+- `snapshot_fct_btc_intraday_market.sql`
+- `snapshot_btc_forecast_vs_realtime.sql`
 
 #### `macros/`
 
@@ -292,14 +395,11 @@ After a successful run, the main objects produced by this project are:
 - `analytics.btc_daily_clean`
 - `analytics.btc_fear_greed_clean`
 - `analytics.fct_btc_daily`
+- `analytics.fct_btc_intraday_market`
+- `analytics.btc_forecast_vs_realtime`
 - `snapshot.snapshot_fct_btc_daily`
-
-From a business perspective:
-
-- `btc_daily_clean` is the cleaned daily BTC price layer
-- `btc_fear_greed_clean` is the cleaned daily sentiment layer
-- `fct_btc_daily` is the final daily historical analytics table
-- `snapshot_fct_btc_daily` is the historical version-tracking table for the final analytics output and should be created in the `snapshot` schema
+- `snapshot.snapshot_fct_btc_intraday_market`
+- `snapshot.snapshot_btc_forecast_vs_realtime`
 
 ## How to Run the Project
 
@@ -309,9 +409,9 @@ From a business perspective:
 dbt parse
 ```
 
-This checks whether the project structure, SQL, and model references are valid.
+This checks whether the project structure, SQL, model references, and snapshot definitions are valid.
 
-### 2. Build models and run tests
+### 2. Build all models and run tests
 
 ```bash
 dbt build
@@ -323,19 +423,27 @@ This command runs the full pipeline in dependency order:
 - runs generic tests
 - runs singular tests
 
-### 3. Run the snapshot
+### 3. Build only the new realtime and forecast models
+
+```bash
+dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
+```
+
+This is useful when validating the newly added realtime analytics branch without rebuilding everything else.
+
+### 4. Run the snapshot
 
 ```bash
 dbt snapshot
 ```
 
-This command records historical versions of `fct_btc_daily`.
+This command records historical versions of all snapshot-enabled models in the `snapshots/` folder.
 
-It should normally be run after `dbt build`, because the snapshot reads from the final analytics model.
+It should normally be run after `dbt build`, because the snapshots read from analytics models that must already exist.
 
-If an older copy of `snapshot_fct_btc_daily` was accidentally created in the `analytics` schema, it should be dropped so that the snapshot version only exists in the `snapshot` schema.
+If an older copy of a snapshot table was accidentally created in the `analytics` schema, it should be dropped so that snapshot outputs only exist in the `snapshot` schema.
 
-### 4. Generate documentation
+### 5. Generate documentation
 
 ```bash
 dbt docs generate
@@ -343,7 +451,7 @@ dbt docs generate
 
 This creates dbt documentation artifacts and lineage metadata.
 
-### 5. Open the dbt docs site
+### 6. Open the dbt docs site
 
 ```bash
 dbt docs serve
@@ -359,19 +467,24 @@ This starts a local documentation website where you can view:
 
 ## Lineage Summary
 
-The final lineage for this project is:
+The main model relationships in this project are:
 
 ```text
 raw.BTC_DAILY --------> btc_daily_clean --------\
-                                                 -> fct_btc_daily
+                                                 -> fct_btc_daily -----> snapshot_fct_btc_daily
 raw.BTC_FEAR_GREED --> btc_fear_greed_clean ----/
 
-fct_btc_daily ----------------------------------> snapshot_fct_btc_daily
+raw.BTC_REALTIME --------------------------------> fct_btc_intraday_market ---> btc_forecast_vs_realtime
+                                                     |                              |
+                                                     v                              v
+                                           snapshot_fct_btc_intraday_market   snapshot_btc_forecast_vs_realtime
+fct_btc_daily ----------------------------------------------------------------> btc_forecast_vs_realtime
 ```
 
 ## Notes
 
-- This final version does not use the realtime BTC table in the analytics model.
-- The reason is that the realtime dataset did not provide historical daily coverage aligned with the historical BTC daily table.
-- The final design keeps a clean and consistent grain: one row per day.
-- The snapshot layer was added to preserve historical versions of the final analytics table over time.
+- The project contains both historical daily analytics and realtime / intraday analytics.
+- `fct_btc_daily` remains a daily-grain table.
+- `fct_btc_intraday_market` remains a snapshot-grain table.
+- `btc_forecast_vs_realtime` is a comparison model, not a production trading model.
+- The snapshot layer preserves historical versions of all three analytics models over time.
