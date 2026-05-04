@@ -19,6 +19,8 @@ The ELT workflow is built from three raw source tables:
 - `BTC_FEAR_GREED`
 - `BTC_REALTIME`
 
+`BTC_DAILY` and `BTC_FEAR_GREED` support the historical daily analytics layer. `BTC_REALTIME` is the realtime / intraday BTC source table from `USER_DB_GOPHER.RAW.BTC_REALTIME`, which is used to build the realtime market analytics and forecast validation layer.
+
 The ELT work covers three analytical layers:
 
 - historical daily price analytics
@@ -84,7 +86,7 @@ Important fields in `fct_btc_daily` include:
 
 #### Realtime / Intraday Analytics
 
-`fct_btc_intraday_market` is the intraday market feature table built from `BTC_REALTIME`.
+`fct_btc_intraday_market` is the intraday market feature table built from the realtime source `USER_DB_GOPHER.RAW.BTC_REALTIME`.
 
 It includes metrics such as:
 
@@ -120,21 +122,28 @@ Important fields in `fct_btc_intraday_market` include:
 
 #### Forecast Validation
 
-`btc_forecast_vs_realtime` compares a simple short-term BTC forecast against observed realtime market data.
+`btc_forecast_vs_realtime` compares a rolling short-term BTC baseline forecast against observed realtime market data.
 
 It:
 
-- uses the latest historical daily table as a base
-- computes a trailing 7-day average return
-- predicts the next 1, 2, and 3 days
-- compares predicted values to actual realtime observations
+- uses `fct_btc_daily` as the historical daily forecast input
+- computes a rolling 7-record average return from prior historical daily records
+- predicts BTC close prices for multiple future days from each eligible historical base date
+- compares predicted values and predicted direction to actual realtime observations from `fct_btc_intraday_market`
+- keeps one forecast per `prediction_date` by selecting the forecast generated from the most recent available `base_date`
 
 This model depends on both:
 
 - `fct_btc_daily`
 - `fct_btc_intraday_market`
 
-Therefore, the historical daily model must already exist before the forecast model can run successfully.
+Therefore, both the historical daily model and the realtime intraday model must already exist before the forecast validation model can run successfully.
+
+The model uses a baseline forecast formula:
+
+predicted_close = base_close * (1 + avg_return_7d) ^ day_ahead
+
+This is not intended to be a production trading model. Its purpose is to provide a simple historical-trend expectation that can be validated against newly observed realtime BTC market data.
 
 Important fields in `btc_forecast_vs_realtime` include:
 
@@ -154,9 +163,12 @@ Important fields in `btc_forecast_vs_realtime` include:
 - `avg_return_7d_pct`: trailing 7-day average return used in the model
 - `base_fear_greed_value`: latest historical Fear & Greed numeric value
 - `base_fear_greed_label`: latest historical Fear & Greed label
+- `base_intraday_range_pct`: historical intraday range percentage on the base date
+- `base_volume`: historical volume on the base date
 - `realtime_volatility_pct`: volatility observed from realtime data
 - `buy_pressure_level`: buy-pressure classification observed from realtime data
 - `taker_buy_ratio`: realtime taker buy ratio
+- `validation_status`: whether the forecast has a matching realtime observation
 - `model_name`: name of the forecasting method
 - `model_created_at`: timestamp when the forecast model row was generated
 - `record_updated_at`: timestamp used for snapshot version tracking
@@ -206,7 +218,7 @@ Build the historical daily model first:
 dbt build --select fct_btc_daily
 ```
 
-Then build the new realtime and forecast models:
+Then build the realtime and forecast validation models:
 
 ```bash
 dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
@@ -217,10 +229,16 @@ This order matters because `btc_forecast_vs_realtime` reads from both:
 - `fct_btc_daily`
 - `fct_btc_intraday_market`
 
-If you want the safest end-to-end run from scratch, use:
+If the project is being built from scratch, use the full project build so that upstream dependencies are created first:
 
 ```bash
 dbt build
+```
+
+If upstream models already exist and only the realtime / forecast branch needs to be refreshed, use:
+
+```bash
+dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
 ```
 
 Run snapshots:
@@ -245,7 +263,9 @@ dbt docs serve
 
 - `fct_btc_daily` is a daily-grain table.
 - `fct_btc_intraday_market` is a snapshot-grain table.
-- `btc_forecast_vs_realtime` is a comparison model for analysis, not a production trading model.
+- `btc_forecast_vs_realtime` is a rolling baseline forecast validation model for analysis, not a production trading model.
+- The forecast model uses prior 7-record historical average returns to generate multi-day BTC close forecasts.
+- Forecast rows with matching realtime observations are marked as validated; rows without available realtime observations remain forecast-only.
 - Snapshot tables should be created in the `snapshot` schema, not in `analytics`.
 
 ## 4. Dashboard

@@ -102,7 +102,9 @@ In this project, `source.yml` defines:
 
 - `raw.BTC_DAILY`
 - `raw.BTC_FEAR_GREED`
-- `raw.BTC_REALTIME`
+- `gopher_raw.BTC_REALTIME`
+
+`BTC_DAILY` and `BTC_FEAR_GREED` are used as the historical daily and sentiment sources. `BTC_REALTIME` is explicitly defined as a realtime source from `USER_DB_GOPHER.RAW.BTC_REALTIME`, which contains Elina's Binance-style intraday BTC market snapshots.
 
 It also includes source tests such as:
 
@@ -204,7 +206,7 @@ It represents the latest known update time for each final analytics row and allo
 
 #### `models/analytics/fct_btc_intraday_market.sql`
 
-This model builds an intraday / realtime BTC analytics table from `BTC_REALTIME`.
+This model builds an intraday / realtime BTC analytics table from the source `gopher_raw.BTC_REALTIME`, which points to `USER_DB_GOPHER.RAW.BTC_REALTIME`.
 
 Its purpose is to:
 
@@ -231,24 +233,32 @@ Important output columns include:
 - `avg_trade_size_usdt`
 - `snapshot_direction`
 - `buy_pressure_level`
+- `record_updated_at`
 
 #### `models/analytics/btc_forecast_vs_realtime.sql`
 
-This model compares a simple short-term BTC forecast against actual observed realtime market data.
+This model compares a rolling short-term BTC forecast against actual observed realtime market data.
 
 Its purpose is to:
 
-- use the latest historical daily table as a forecast base
-- compute a trailing 7-day average return
-- predict BTC close prices for the next 1, 2, and 3 days
-- compare forecasted values and forecast direction to realtime observations
+- use `fct_btc_daily` as the historical daily forecast input
+- calculate a rolling 7-record average return for each eligible historical base date
+- forecast BTC close prices for multiple future days from each base date
+- compare forecasted values and forecast direction with realtime observations from `fct_btc_intraday_market`
+- keep one forecast per `prediction_date` by selecting the forecast generated from the most recent available `base_date`
 
 This model depends on both:
 
 - `fct_btc_daily`
 - `fct_btc_intraday_market`
 
-Therefore, the historical daily model must exist before the forecast model can run successfully.
+Therefore, both the historical daily model and the intraday realtime model must exist before the forecast comparison model can run successfully.
+
+The model uses a rolling baseline approach rather than a production-grade trading model. For each base date after the first 7 historical records, it uses the previous 7 historical daily returns to compute `avg_return_7d`. It then forecasts multiple future days using compound return logic:
+
+predicted_close = base_close * (1 + avg_return_7d) ^ day_ahead
+
+Because multiple historical base dates can generate the same prediction_date, the model keeps only the forecast generated from the latest available base_date. This avoids duplicate prediction dates and preserves the most recent historical signal.
 
 Important output columns include:
 
@@ -258,17 +268,33 @@ Important output columns include:
 - `base_close`
 - `predicted_close`
 - `actual_realtime_close`
+- `actual_fetched_at`
+- `actual_snapshot_hour`
 - `error_usd`
 - `error_pct`
 - `predicted_direction`
 - `actual_direction`
 - `direction_match`
 - `avg_return_7d_pct`
+- `base_fear_greed_value`
+- `base_fear_greed_label`
+- `base_intraday_range_pct`
+- `base_volume`
 - `realtime_volatility_pct`
 - `buy_pressure_level`
 - `taker_buy_ratio`
+- `validation_status`
 - `model_name`
 - `model_created_at`
+- `record_updated_at`
+
+The validation_status field indicates whether a forecast has a matching realtime observation:
+
+validated_with_realtime: realtime actual close is available for the prediction date
+forecast_only: no realtime actual close is currently available for the prediction date
+
+This design allows the table to support both current validation and future validation as the realtime pipeline continues to collect new snapshots.
+
 
 ### Snapshot Definition
 
@@ -329,6 +355,8 @@ This snapshot uses:
 - `prediction_date` as the unique key
 - `record_updated_at` as the update timestamp
 - `timestamp` strategy for change detection
+
+Because `btc_forecast_vs_realtime` keeps only one row per `prediction_date`, `prediction_date` can safely be used as the snapshot unique key.
 
 ### Singular Data Tests
 
@@ -444,17 +472,22 @@ This step ensures the historical daily table exists before the forecast model re
 dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
 ```
 
-This is useful when validating the newly added realtime analytics branch without rebuilding everything else.
+This is useful when validating the realtime analytics and forecast validation branch without rebuilding everything else.
 
 This order matters because `btc_forecast_vs_realtime` reads from:
 
 - `fct_btc_daily`
 - `fct_btc_intraday_market`
 
-If you want the safest end-to-end run from scratch, use:
+If the project is being built from scratch, run the upstream historical models first or use the full project build:
 
 ```bash
 dbt build
+```
+If only validating the forecast branch after upstream models already exist, use:
+
+```bash
+dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
 ```
 
 ### 5. Run the snapshot
@@ -500,7 +533,7 @@ raw.BTC_DAILY --------> btc_daily_clean --------\
                                                  -> fct_btc_daily -----> snapshot_fct_btc_daily
 raw.BTC_FEAR_GREED --> btc_fear_greed_clean ----/
 
-raw.BTC_REALTIME --------------------------------> fct_btc_intraday_market ---> btc_forecast_vs_realtime
+gopher_raw.BTC_REALTIME -----------------------> fct_btc_intraday_market ---> btc_forecast_vs_realtime
                                                      |                              |
                                                      v                              v
                                            snapshot_fct_btc_intraday_market   snapshot_btc_forecast_vs_realtime
@@ -509,8 +542,11 @@ fct_btc_daily ----------------------------------------------------------------> 
 
 ## Notes
 
-- The project contains both historical daily analytics and realtime / intraday analytics.
+- The project contains historical daily analytics, realtime / intraday analytics, and forecast-vs-realtime validation.
 - `fct_btc_daily` remains a daily-grain table.
 - `fct_btc_intraday_market` remains a snapshot-grain table.
-- `btc_forecast_vs_realtime` is a comparison model, not a production trading model.
+- `btc_forecast_vs_realtime` is a rolling baseline forecast comparison model, not a production trading model.
+- The forecast model uses the previous 7 historical daily returns to generate multi-day BTC close forecasts.
+- When realtime observations are available for a `prediction_date`, the model compares predicted close against actual realtime close.
+- When realtime observations are not yet available, the row remains forecast-only.
 - The snapshot layer preserves historical versions of all three analytics models over time.
