@@ -2,26 +2,26 @@
 Group 6: Xu Wang, Xuanhua Li, Ying Zhu, Elina Yin
 
 ## 1. Project and Dataset Overview
-## 1.1 Project Objective  
+### 1.1 Project Objective  
 This project builds a robust, automated data platform integrating historical financial records with real-time Bitcoin (BTC) market data.  
 
 - Single source of truth for BTC pricing  
 - Supports long-term trend + short-term volatility analysis  
 - Delivered via BI dashboard
 
-## 1.2 Data Sources  
+### 1.2 Data Sources  
 
-### Source 1 — Yahoo Finance  
+#### Source 1 — Yahoo Finance  
 - Type: Historical OHLCV  
 - Coverage: Daily since 2025-05-01  
 - Table: `RAW.BTC_DAILY`  
 
-### Source 2 — Binance.US API  
+#### Source 2 — Binance.US API  
 - Type: Real-time intraday data  
 - Frequency: Every 4 hours  
 - Table: `RAW.BTC_REALTIME`  
 
-### Source 3 — Alternative.me  
+#### Source 3 — Alternative.me  
 - Type: Fear & Greed Index  
 - Frequency: Daily  
 - Table: `RAW.BTC_FEAR_GREED`  
@@ -29,14 +29,14 @@ This project builds a robust, automated data platform integrating historical fin
 
 
 ## 2. ETL Part
-## 2.1 Overview  
+### 2.1 Overview  
 - Built with **Apache Airflow (Docker)**  
 - 3 DAGs for automated ingestion  
 - Tables auto-created on first run  
 
 ---
 
-## 2.2 Infrastructure  
+### 2.2 Infrastructure  
 
 - Airflow: 2.10.1 (Docker)  
 - Executor: LocalExecutor  
@@ -46,9 +46,9 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-## 2.3 DAG Design  
+### 2.3 DAG Design  
 
-### DAG 1 — btc_historical_daily  
+#### DAG 1 — btc_historical_daily  
 - Source: Yahoo Finance  
 - Schedule: Daily 00:30 UTC  
 - Write: MERGE (idempotent)  
@@ -61,7 +61,7 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-### DAG 2 — btc_fng_daily  
+#### DAG 2 — btc_fng_daily  
 - Source: Alternative.me  
 - Triggered by DAG 1  
 - Write: MERGE  
@@ -72,7 +72,7 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-### DAG 3 — btc_binance_daily  
+#### DAG 3 — btc_binance_daily  
 - Source: Binance + CoinGecko  
 - Schedule: Every 4 hours  
 - Write: INSERT  
@@ -83,7 +83,7 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-## 2.4 Daily Schedule  
+### 2.4 Daily Schedule  
 
 | Time (UTC) | DAG | Action |
 |------------|----|--------|
@@ -98,7 +98,7 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-## 2.5 Idempotency  
+### 2.5 Idempotency  
 
 | Table | Mode | Logic |
 |------|------|------|
@@ -108,7 +108,7 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-## 2.6 Historical Backfill  
+### 2.6 Historical Backfill  
 
 | Table | Records | Method |
 |------|--------|--------|
@@ -118,7 +118,7 @@ This project builds a robust, automated data platform integrating historical fin
 
 ---
 
-## 2.7 Error Handling  
+### 2.7 Error Handling  
 
 | DAG | Retries | Notes |
 |----|--------|------|
