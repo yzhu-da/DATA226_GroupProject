@@ -243,6 +243,13 @@ Its purpose is to:
 - predict BTC close prices for the next 1, 2, and 3 days
 - compare forecasted values and forecast direction to realtime observations
 
+This model depends on both:
+
+- `fct_btc_daily`
+- `fct_btc_intraday_market`
+
+Therefore, the historical daily model must exist before the forecast model can run successfully.
+
 Important output columns include:
 
 - `prediction_date`
@@ -423,7 +430,15 @@ This command runs the full pipeline in dependency order:
 - runs generic tests
 - runs singular tests
 
-### 3. Build only the new realtime and forecast models
+### 3. Build the historical daily model first
+
+```bash
+dbt build --select fct_btc_daily
+```
+
+This step ensures the historical daily table exists before the forecast model reads from it.
+
+### 4. Build only the new realtime and forecast models
 
 ```bash
 dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
@@ -431,7 +446,18 @@ dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
 
 This is useful when validating the newly added realtime analytics branch without rebuilding everything else.
 
-### 4. Run the snapshot
+This order matters because `btc_forecast_vs_realtime` reads from:
+
+- `fct_btc_daily`
+- `fct_btc_intraday_market`
+
+If you want the safest end-to-end run from scratch, use:
+
+```bash
+dbt build
+```
+
+### 5. Run the snapshot
 
 ```bash
 dbt snapshot
@@ -443,7 +469,7 @@ It should normally be run after `dbt build`, because the snapshots read from ana
 
 If an older copy of a snapshot table was accidentally created in the `analytics` schema, it should be dropped so that snapshot outputs only exist in the `snapshot` schema.
 
-### 5. Generate documentation
+### 6. Generate documentation
 
 ```bash
 dbt docs generate
@@ -451,7 +477,7 @@ dbt docs generate
 
 This creates dbt documentation artifacts and lineage metadata.
 
-### 6. Open the dbt docs site
+### 7. Open the dbt docs site
 
 ```bash
 dbt docs serve

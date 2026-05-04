@@ -129,6 +129,13 @@ It:
 - predicts the next 1, 2, and 3 days
 - compares predicted values to actual realtime observations
 
+This model depends on both:
+
+- `fct_btc_daily`
+- `fct_btc_intraday_market`
+
+Therefore, the historical daily model must already exist before the forecast model can run successfully.
+
 Important fields in `btc_forecast_vs_realtime` include:
 
 - `prediction_date`: forecast target date
@@ -193,10 +200,27 @@ Build models and run tests:
 dbt build
 ```
 
-Build only the new realtime and forecast models:
+Build the historical daily model first:
+
+```bash
+dbt build --select fct_btc_daily
+```
+
+Then build the new realtime and forecast models:
 
 ```bash
 dbt build --select fct_btc_intraday_market btc_forecast_vs_realtime
+```
+
+This order matters because `btc_forecast_vs_realtime` reads from both:
+
+- `fct_btc_daily`
+- `fct_btc_intraday_market`
+
+If you want the safest end-to-end run from scratch, use:
+
+```bash
+dbt build
 ```
 
 Run snapshots:
