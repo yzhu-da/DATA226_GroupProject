@@ -2,8 +2,129 @@
 Group 6: Xu Wang, Xuanhua Li, Ying Zhu, Elina Yin
 
 ## 1. Project and Dataset Overview
+## 1.1 Project Objective  
+This project builds a robust, automated data platform integrating historical financial records with real-time Bitcoin (BTC) market data.  
+
+- Single source of truth for BTC pricing  
+- Supports long-term trend + short-term volatility analysis  
+- Delivered via BI dashboard
+
+## 1.2 Data Sources  
+
+### Source 1 — Yahoo Finance  
+- Type: Historical OHLCV  
+- Coverage: Daily since 2025-05-01  
+- Table: `RAW.BTC_DAILY`  
+
+### Source 2 — Binance.US API  
+- Type: Real-time intraday data  
+- Frequency: Every 4 hours  
+- Table: `RAW.BTC_REALTIME`  
+
+### Source 3 — Alternative.me  
+- Type: Fear & Greed Index  
+- Frequency: Daily  
+- Table: `RAW.BTC_FEAR_GREED`  
+
+
 
 ## 2. ETL Part
+## 2.1 Overview  
+- Built with **Apache Airflow (Docker)**  
+- 3 DAGs for automated ingestion  
+- Tables auto-created on first run  
+
+---
+
+## 2.2 Infrastructure  
+
+- Airflow: 2.10.1 (Docker)  
+- Executor: LocalExecutor  
+- Metadata DB: PostgreSQL 13  
+- Snowflake Provider: 5.7.0  
+- Libraries: `yfinance`, `pandas`, `requests`  
+
+---
+
+## 2.3 DAG Design  
+
+### DAG 1 — btc_historical_daily  
+- Source: Yahoo Finance  
+- Schedule: Daily 00:30 UTC  
+- Write: MERGE (idempotent)  
+- Output: `BTC_DAILY`  
+
+**Tasks:**
+1. Create table  
+2. Fetch data  
+3. Trigger next DAG  
+
+---
+
+### DAG 2 — btc_fng_daily  
+- Source: Alternative.me  
+- Triggered by DAG 1  
+- Write: MERGE  
+
+**Tasks:**
+1. Create table  
+2. Fetch sentiment data  
+
+---
+
+### DAG 3 — btc_binance_daily  
+- Source: Binance + CoinGecko  
+- Schedule: Every 4 hours  
+- Write: INSERT  
+
+**Tasks:**
+1. Create table  
+2. Fetch snapshot  
+
+---
+
+## 2.4 Daily Schedule  
+
+| Time (UTC) | DAG | Action |
+|------------|----|--------|
+| 00:00 | binance | snapshot #1 |
+| 00:30 | historical | daily OHLCV |
+| 00:35 | fng | sentiment |
+| 04:00 | binance | snapshot #2 |
+| 08:00 | binance | snapshot #3 |
+| 12:00 | binance | snapshot #4 |
+| 16:00 | binance | snapshot #5 |
+| 20:00 | binance | snapshot #6 |
+
+---
+
+## 2.5 Idempotency  
+
+| Table | Mode | Logic |
+|------|------|------|
+| BTC_DAILY | MERGE | PK = date |
+| BTC_FEAR_GREED | MERGE | PK = date |
+| BTC_REALTIME | INSERT | PK = fetched_at |
+
+---
+
+## 2.6 Historical Backfill  
+
+| Table | Records | Method |
+|------|--------|--------|
+| BTC_DAILY | ~365 | yfinance |
+| BTC_FEAR_GREED | ~365 | Alternative API |
+| BTC_REALTIME | ~365 | Binance + CoinGecko |
+
+---
+
+## 2.7 Error Handling  
+
+| DAG | Retries | Notes |
+|----|--------|------|
+| historical | 2 | fail if empty |
+| fng | 3 | fallback logic |
+| binance | 2 | fail if no data |
 
 ## 3. ELT Part
 
