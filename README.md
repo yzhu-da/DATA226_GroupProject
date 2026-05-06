@@ -389,4 +389,95 @@ dbt docs serve
 - Forecast rows with matching realtime observations are marked as validated; rows without available realtime observations remain forecast-only.
 - Snapshot tables should be created in the `snapshot` schema, not in `analytics`.
 
-## 4. Dashboard
+## 4.Dashboard (Preset)
+
+The dashboard is built using **Preset (Apache Superset)** and serves as the final analytical layer of this project. It provides an end-to-end view of Bitcoin market behavior by integrating **price data, sentiment indicators, and model predictions** into a unified, interactive interface.
+
+🔗 **Live Dashboard**: https://2fff86ce.us2a.app.preset.io/superset/dashboard/8/
+
+---
+
+### 4.1 Overview
+This dashboard transforms processed data into actionable insights, enabling users to explore how **market sentiment, price dynamics, and predictive modeling** interact over time.
+
+It is designed to support both **exploratory analysis** and **insight generation**, helping users better understand Bitcoin market patterns and risks.
+
+---
+
+### 4.2 Key Metrics (Top Panel)
+At the top of the dashboard, key indicators provide a snapshot of current market conditions:
+
+- **Latest BTC Price** → Current market price  
+- **Fear & Greed Index** → Market sentiment indicator  
+- **Average Daily Return** → Overall return trend  
+- **Forecast Error** → Model performance indicator  
+
+Together, these metrics give a quick, high-level overview of the market state.
+
+---
+
+### 4.3 Interactive Filtering
+- Adjust **time range** dynamically (e.g., 90 / 30 / 7 days)  
+- Compare **short-term vs long-term trends**  
+
+---
+
+### 4.4 Core Visualizations & Insights
+
+#### 4.4.1 Price vs Forecast Trend
+- Compares **actual Bitcoin prices** with **model predictions**  
+- The model captures overall trends effectively  
+- Deviations increase during **high-volatility periods**, indicating model limitations  
+
+#### 4.4.2 Recent Price Trend
+- Highlights **short-term price movements**  
+- Useful for identifying recent momentum  
+
+#### 4.4.3 Prediction Error Analysis
+- Tracks how prediction error evolves over time  
+- Errors increase when the market becomes more volatile  
+- Helps evaluate **model robustness**  
+
+#### 4.4.4  Market Sentiment (Fear & Greed Index)
+- Shows how sentiment evolves over time  
+- Reflects changes in **investor psychology**  
+
+#### 4.4.5 Sentiment vs Returns 
+- Examines relationship between **sentiment and returns**  
+- Extreme fear is associated with:
+  - Higher volatility  
+  - Wider distribution of returns  
+
+#### 4.4.6 Average Returns by Sentiment 
+- Summarizes returns across sentiment categories  
+- Key finding:
+  - **Extreme greed is associated with negative average returns**, suggesting possible corrections  
+-  Note: Small sample size → interpret cautiously  
+
+---
+
+### 4.5 Key Insights
+- Sentiment is **not a direct predictor** of returns  
+- However, it provides strong signals about:
+  - Market **risk**
+  - **Volatility patterns**
+- Predictive models perform well in stable periods but struggle in volatile markets  
+- Combining **price + sentiment + prediction** improves understanding of market behavior  
+
+---
+
+### 4.6 Data Pipeline Integration
+The dashboard is integrated with the full data pipeline:
+
+- **Airflow** → Data ingestion & orchestration  
+- **dbt** → Data transformation & modeling  
+- **Data Warehouse** → Structured storage  
+- **Preset** → Visualization layer  
+
+---
+
+### 4.7 Notes
+
+- Data freshness depends on pipeline schedule
+- Forecast model is for analysis, not trading
+- Extreme sentiment insights should be interpreted cautiously
