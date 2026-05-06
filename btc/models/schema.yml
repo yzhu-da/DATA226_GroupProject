@@ -84,12 +84,3 @@ models:
         description: "Timestamp used by dbt snapshots to track forecast row changes over time."
         data_tests:
           - not_null
-
-  - name: gopher_raw
-    database: USER_DB_GOPHER
-    schema: RAW
-    description: "Raw schema containing Elina's realtime BTC market data."
-    tables:
-      - name: btc_realtime
-        identifier: BTC_REALTIME
-        description: "Realtime / intraday BTC market snapshots collected from Binance-style 4-hour data."
